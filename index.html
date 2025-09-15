@@ -1,0 +1,434 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Rust WASM Synthesizer</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        body {
+            margin: 0;
+            padding: 20px;
+            font-family: 'Courier New', monospace;
+            background: linear-gradient(135deg, #0a0a0a 0%, #1a1a2e 50%, #16213e 100%);
+            color: #fff;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+
+        .header h1 {
+            color: #40e0d0;
+            text-shadow: 0 0 10px rgba(64, 224, 208, 0.5);
+            margin: 0;
+            font-size: 2.5em;
+        }
+
+        .header p {
+            color: #ccc;
+            margin: 10px 0;
+        }
+
+        .synthesizer-container {
+            background: rgba(0, 0, 0, 0.9);
+            border-radius: 15px;
+            padding: 20px;
+            box-shadow: 0 0 30px rgba(64, 224, 208, 0.3);
+            border: 2px solid rgba(64, 224, 208, 0.5);
+            margin-bottom: 20px;
+        }
+
+        #synthesizer-canvas {
+            border: 2px solid #40e0d0;
+            border-radius: 8px;
+            box-shadow: 0 0 15px rgba(64, 224, 208, 0.4);
+            display: block;
+            margin: 0 auto;
+            image-rendering: pixelated;
+            image-rendering: -moz-crisp-edges;
+            image-rendering: crisp-edges;
+            background: #000;
+        }
+
+        .controls-info {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin-top: 20px;
+            max-width: 800px;
+        }
+
+        .control-group {
+            background: rgba(64, 224, 208, 0.1);
+            border-radius: 10px;
+            padding: 15px;
+            border: 1px solid rgba(64, 224, 208, 0.3);
+        }
+
+        .control-group h3 {
+            margin: 0 0 15px 0;
+            color: #40e0d0;
+            font-size: 1.1em;
+        }
+
+        .control-list {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+
+        .control-list li {
+            margin: 8px 0;
+            padding: 5px;
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 4px;
+            font-family: monospace;
+            font-size: 0.9em;
+        }
+
+        .key-map {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(80px, 1fr));
+            gap: 8px;
+            margin-top: 10px;
+        }
+
+        .key-map div {
+            background: rgba(0, 0, 0, 0.4);
+            padding: 8px;
+            border-radius: 5px;
+            text-align: center;
+            font-family: monospace;
+            font-size: 0.8em;
+        }
+
+        .white-key {
+            border-left: 3px solid #40e0d0;
+        }
+
+        .black-key {
+            border-left: 3px solid #888;
+            background: rgba(0, 0, 0, 0.6);
+        }
+
+        .init-button {
+            background: linear-gradient(135deg, #40e0d0, #20b2aa);
+            border: none;
+            color: white;
+            padding: 15px 30px;
+            font-size: 1.1em;
+            font-weight: bold;
+            border-radius: 8px;
+            cursor: pointer;
+            margin: 10px;
+            display: inline-block;
+            box-shadow: 0 4px 15px rgba(64, 224, 208, 0.3);
+            transition: all 0.3s ease;
+        }
+
+        .init-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(64, 224, 208, 0.4);
+        }
+
+        .init-button:disabled {
+            background: #666;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+
+        .status {
+            text-align: center;
+            margin: 10px 0;
+            color: #ccc;
+            font-size: 0.9em;
+        }
+
+        .status.ready {
+            color: #40e0d0;
+        }
+
+        .status.error {
+            color: #ff6b6b;
+        }
+
+        .status.loading {
+            color: #ffa726;
+        }
+
+        #loading {
+            text-align: center;
+            color: #40e0d0;
+            margin: 20px 0;
+        }
+
+        .loading-spinner {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid #40e0d0;
+            border-radius: 50%;
+            border-top-color: transparent;
+            animation: spin 1s ease-in-out infinite;
+            margin-right: 10px;
+        }
+
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
+        .progress-steps {
+            text-align: center;
+            margin: 20px 0;
+        }
+
+        .step {
+            color: #666;
+            margin: 5px 0;
+            font-size: 0.9em;
+        }
+
+        .step.active {
+            color: #ffa726;
+        }
+
+        .step.complete {
+            color: #40e0d0;
+        }
+
+        @media (max-width: 768px) {
+            .synthesizer-container {
+                padding: 10px;
+                margin: 5px;
+            }
+
+            #synthesizer-canvas {
+                max-width: 100%;
+                height: auto;
+            }
+
+            .controls-info {
+                grid-template-columns: 1fr;
+            }
+
+            .header h1 {
+                font-size: 2em;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🎹 Rust WASM Synthesizer</h1>
+        <p>Hardware-style synthesizer interface built with Rust and WebAssembly</p>
+    </div>
+
+    <div id="loading">
+        <div class="loading-spinner"></div>
+        Loading WASM module...
+    </div>
+
+    <div class="progress-steps" id="progress-steps" style="display: none;">
+        <div class="step" id="step-wasm">Loading WASM module...</div>
+        <div class="step" id="step-sprites">Loading sprite assets...</div>
+        <div class="step" id="step-audio">Initializing audio...</div>
+        <div class="step" id="step-ready">Starting synthesizer...</div>
+    </div>
+
+    <div class="init-button-container" style="text-align: center;">
+        <button id="init-sprites" class="init-button" style="display: none;">
+            🖼️ Load Assets
+        </button>
+        <button id="init-audio" class="init-button" style="display: none;">
+            🎵 Initialize Audio
+        </button>
+    </div>
+
+    <div class="status" id="status">Loading WASM module...</div>
+
+    <div class="synthesizer-container" id="synth-container" style="display: none;">
+        <canvas id="synthesizer-canvas"></canvas>
+    </div>
+
+    <div class="controls-info" id="controls-info" style="display: none;">
+        <div class="control-group">
+            <h3>Keyboard Controls</h3>
+            <div class="key-map">
+                <div class="white-key">A → C</div>
+                <div class="black-key">W → C#</div>
+                <div class="white-key">S → D</div>
+                <div class="black-key">E → D#</div>
+                <div class="white-key">D → E</div>
+                <div class="white-key">F → F</div>
+                <div class="black-key">T → F#</div>
+                <div class="white-key">G → G</div>
+                <div class="black-key">Y → G#</div>
+                <div class="white-key">H → A</div>
+                <div class="black-key">U → A#</div>
+                <div class="white-key">J → B</div>
+            </div>
+        </div>
+
+        <div class="control-group">
+            <h3>Interface Controls</h3>
+            <ul class="control-list">
+                <li><strong>1-4:</strong> Select waveform (Sine, Square, Triangle, Sawtooth)</li>
+                <li><strong>↑/↓:</strong> Adjust octave (1-8)</li>
+                <li><strong>Keys:</strong> Visual feedback on synthesizer interface</li>
+                <li><strong>Display:</strong> Shows current waveform and settings</li>
+            </ul>
+        </div>
+    </div>
+
+    <script type="module">
+        import init, { WasmSynthesizer } from './pkg/synthesizer.js';
+
+        let synthesizer = null;
+        let animationId = null;
+
+        function updateStatus(message, type = '') {
+            const statusEl = document.getElementById('status');
+            statusEl.textContent = message;
+            statusEl.className = 'status ' + type;
+        }
+
+        function updateStep(stepId, status) {
+            const stepEl = document.getElementById(stepId);
+            if (stepEl) {
+                stepEl.className = 'step ' + status;
+            }
+        }
+
+        async function run() {
+            try {
+                document.getElementById('progress-steps').style.display = 'block';
+                updateStep('step-wasm', 'active');
+
+                // Initialize the WASM module
+                await init();
+                console.log('WASM module loaded successfully');
+                updateStep('step-wasm', 'complete');
+
+                // Create synthesizer instance
+                synthesizer = new WasmSynthesizer();
+                console.log('Synthesizer created');
+
+                // Get the canvas and add it to the DOM
+                const canvas = synthesizer.get_canvas();
+                const container = document.getElementById('synthesizer-canvas');
+                container.parentNode.replaceChild(canvas, container);
+                canvas.id = 'synthesizer-canvas';
+
+                // Update UI
+                document.getElementById('loading').style.display = 'none';
+                document.getElementById('init-sprites').style.display = 'inline-block';
+                updateStatus('Ready to load assets', 'ready');
+
+                // Set up sprite loading
+                document.getElementById('init-sprites').addEventListener('click', async () => {
+                    try {
+                        document.getElementById('init-sprites').disabled = true;
+                        updateStep('step-sprites', 'active');
+                        updateStatus('Loading sprite assets...', 'loading');
+
+                        await synthesizer.init_sprites();
+                        console.log('Sprites loaded successfully');
+
+                        updateStep('step-sprites', 'complete');
+                        document.getElementById('init-sprites').style.display = 'none';
+                        document.getElementById('init-audio').style.display = 'inline-block';
+                        updateStatus('Assets loaded! Click to initialize audio.', 'ready');
+                    } catch (error) {
+                        console.error('Failed to load sprites:', error);
+                        updateStatus('Failed to load sprites: ' + error.message, 'error');
+                        document.getElementById('init-sprites').disabled = false;
+                    }
+                });
+
+                // Set up audio initialization
+                document.getElementById('init-audio').addEventListener('click', async () => {
+                    try {
+                        document.getElementById('init-audio').disabled = true;
+                        updateStep('step-audio', 'active');
+                        updateStatus('Initializing audio system...', 'loading');
+
+                        await synthesizer.init_audio();
+                        console.log('Audio initialized successfully');
+
+                        updateStep('step-audio', 'complete');
+                        updateStep('step-ready', 'active');
+
+                        document.getElementById('init-audio').style.display = 'none';
+                        document.getElementById('synth-container').style.display = 'block';
+                        document.getElementById('controls-info').style.display = 'grid';
+                        document.getElementById('progress-steps').style.display = 'none';
+
+                        updateStatus('🎹 Synthesizer ready! Use keyboard to play.', 'ready');
+                        updateStep('step-ready', 'complete');
+
+                        startRenderLoop();
+                        setupKeyboardInput();
+
+                    } catch (error) {
+                        console.error('Failed to initialize audio:', error);
+                        updateStatus('Failed to initialize audio: ' + error.message, 'error');
+                        document.getElementById('init-audio').disabled = false;
+                    }
+                });
+
+            } catch (error) {
+                console.error('Failed to initialize synthesizer:', error);
+                document.getElementById('loading').textContent = 'Failed to load synthesizer: ' + error.message;
+                updateStatus('Error: ' + error.message, 'error');
+            }
+        }
+
+        function startRenderLoop() {
+            function render() {
+                if (synthesizer) {
+                    try {
+                        synthesizer.render();
+                    } catch (error) {
+                        console.error('Render error:', error);
+                    }
+                }
+                animationId = requestAnimationFrame(render);
+            }
+            render();
+        }
+
+        function setupKeyboardInput() {
+            document.addEventListener('keydown', (event) => {
+                if (!event.repeat && synthesizer) {
+                    try {
+                        synthesizer.handle_key_down(event.code);
+                    } catch (error) {
+                        console.error('Key down error:', error);
+                    }
+                }
+            });
+
+            document.addEventListener('keyup', (event) => {
+                if (synthesizer) {
+                    try {
+                        synthesizer.handle_key_up(event.code);
+                    } catch (error) {
+                        console.error('Key up error:', error);
+                    }
+                }
+            });
+        }
+
+        // Start the application
+        run();
+    </script>
+</body>
+</html>
